@@ -295,6 +295,30 @@ func init() {
 		uid := ctx.Event.UserID
 		fiancee := ctx.State["regex_matched"].([]string)
 
+		// 检查是否炸膛（0.01%概率）
+		if rand.Float64() < 0.0001 { // 0.01% = 0.0001
+			// 炸膛了，先注销牛牛然后重新注册（重置为0）
+			_, err := niu.Cancel(gid, uid)
+			if err == nil {
+				// 注销成功后重新注册
+				_, regErr := niu.Register(gid, uid)
+				if regErr == nil {
+					ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text("💥 糟糕！你的牛牛炸膛了！牛牛长度已重置为0cm！"))
+				} else {
+					ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text("💥 糟糕！你的牛牛炸膛了！但重置失败：", regErr))
+				}
+			} else {
+				// 如果注销失败，可能是还没注册，直接提示炸膛
+				ctx.SendChain(message.Reply(ctx.Event.MessageID), message.Text("💥 糟糕！你的牛牛炸膛了！"))
+			}
+			// 删除打胶限制器，让用户可以立即再次尝试
+			dajiaoLimiter.Delete(fmt.Sprintf("%d_%d", ctx.Event.GroupID, ctx.Event.UserID))
+			// 同时清理可能存在的jj计数缓存
+			jjKey := fmt.Sprintf("%d_%d", gid, uid)
+			jjCount.Delete(jjKey)
+			return
+		}
+
 		msg, err := niu.HitGlue(gid, uid, fiancee[1])
 		if err != nil {
 			ctx.SendChain(message.Text("ERROR: ", err))
